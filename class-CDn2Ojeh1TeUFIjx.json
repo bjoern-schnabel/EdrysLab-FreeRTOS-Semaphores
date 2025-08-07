@@ -1,0 +1,156 @@
+{
+  "id": "CDn2Ojeh1TeUFIjx",
+  "createdBy": "Eo91rqAn3KuF",
+  "dateCreated": 1751362739096,
+  "name": "FreeRTOS Semaphoren",
+  "meta": {
+    "logo": "",
+    "description": "",
+    "selfAssign": false,
+    "defaultNumberOfRooms": 0
+  },
+  "members": {
+    "teacher": [],
+    "student": []
+  },
+  "modules": [
+    {
+      "url": "https://edrys-labs.github.io/module-markdown-it/index.html",
+      "config": {
+        "content": "\n# Thema\nIn diesem Kurs werden sie sich hands-on mit dem Task-sceduler in FreeRTOS arbeiten. Mittels einer UART Textausgabe werden sie Race Conditions erstellen und den Einfluss von verschiedenen Task-prioritäten, Laufzeiten und Semaphoren erproben.\nLesen sie kurz dein Einführungstext und öffnen sie dann die Station. \n\n# Grundlagen\n\n## Unterbrechung in FreeRTOS:\n- scheduler lässt immer die Task mit der höchsten Priorität laufen, die aktuell bereit ist\n    - falls eine Task mit niedriger Priorität (NPT) aktuell läuft, so unterbricht die Task mit höherer Priorität (HPT) diese.\n- bei gleichen Prioritäten ist standardmäßig time-slicing aktiviert\n    - die Tasks mit gleichen Prioritäten wechseln sich ab (in solchen time-slices (jeweils 1 FreeRTOS-Tick)) (Round-robin)\n- es gibt in FreeRTOS einen periodischen Tick-interrupt um die Zeit zu messen\n\n\n## vTaskDelay()\n- ermöglicht es, Tasks für eine gesetzte Anzahl Ticks warten zu lassen.\n- Andere niederpriore Tasks können währenddessen ausgeführt werden.\n\n## Race Conditions (Wettlaufsituation)\n-  Konstellation, in der das Ergebnis einer Operation vom zeitlichen Verhalten bestimmter Einzeloperationen oder der Umgebung abhängt\n\n- häufig Grund für schwer auffindbare nichtdeterministische Programmfehler\n    - z.B. veränderten Bedingungen zum Programmtest (z.B. Logging) verändern Symptome\n\n## Mutex\n- Synchronisationsmechanismus, der exklusiven Zugriff erlaubt (verhindert unkoordinierten Zugriff auf gemeinsame Resource). Nur eine Task darf auf die serielle Schnittstelle zugreifen, solange sie den Mutex hält\n- bei einem Mutex kann nur die Task die den Mutex hält, diesen auch wieder freigeben\n- in FreeRTOS: priority inheritance (will eine Task mit höherer Priorität auf die Resource zugreifen, so erbt die Task mit dem Mutex temporär die höhere Priorität)\n- verhindert Race Condition\n\n## Usart direkt\n\n        void usart_init(unsigned long BAUDRATE)\t\t\t\t\n        { \n            UCSR0B |= (1 << RXEN0) | (1 << TXEN0);\n            UCSR0C |= (1 << UCSZ00) | (1 << UCSZ01);\t    \n            UBRR0L = BAUD_PRESCALE;\t\t\t\t\t\t\t\n            UBRR0H = (BAUD_PRESCALE >> 8);\t\t\t\t\t\n        }\n\n        void usart_putstring_direct(const char* str){\n            uint16_t strlen = 0;\n            while(str[strlen] != '\\0'){\n                strlen++;\n            }\n            for(uint16_t i; i< strlen; i++ ){\n            vTaskSuspendAll();\n            if(str[i] == '\\n'){\n                loop_until_bit_is_set(UCSR0A, UDRE0);\n                UDR0 = '\\r';\n            }\n            loop_until_bit_is_set(UCSR0A, UDRE0);\n            UDR0 = str[i];\n            xTaskResumeAll();\n            }\n\n        }\n\n- loop_until_bit_is_set(UCSR0A, UDRE0);\n    - wartet, bis Bufferregister frei ist\n- UDR0 = str[i];\n    - schreibt 1 char in 8 Bit Bufferregister\n"
+      },
+      "studentConfig": {
+        "content": ""
+      },
+      "teacherConfig": {
+        "content": ""
+      },
+      "stationConfig": {
+        "content": ""
+      },
+      "showInCustom": "Lobby",
+      "width": "full",
+      "height": "huge"
+    },
+    {
+      "url": "https://edrys-labs.github.io/module-pyxtermjs/index.html",
+      "config": "",
+      "studentConfig": "",
+      "teacherConfig": "",
+      "stationConfig": {
+        "server": "",
+        "execute": "",
+        "script": "rm -r ./Hello\necho $CODE | base64 --decode > Hello.ino\narduino-cli sketch new Hello\nolddir=$(pwd)\nmv Hello.ino Hello\ncd Hello\narduino-cli board attach -p /dev/ttyACM0 -b arduino:avr:uno\ncd $olddir\narduino-cli compile Hello && arduino-cli upload -p /dev/ttyACM0 Hello\narduino-cli monitor -p /dev/ttyACM0",
+        "enable": {
+          "student": false,
+          "teacher": false
+        }
+      },
+      "showInCustom": "station",
+      "width": "full",
+      "height": "tall"
+    },
+    {
+      "url": "https://edrys-labs.github.io/module-markdown-it/index.html",
+      "config": {
+        "content": "## Fall 1: unterschiedliche Prioritäten\nIm ersten Fall soll der Einfluss verschiedener Taskprioritäten auf die Benutzung der geteilten Resource beobachtet werden.\n\n- Task A: niedrigere Priorität\n- Task B: hohe Priorität\n\ndie Frequenzen der Tasks können mit dem Parameter xFrequency eingestellt werden.\n\n### Fall 1.1: Zeitintervalle von B sind sehr klein\n    Setzen sie xFrequency von TaskA auf 20 und von TaskB 0.\n    Das heißt: TaskB wird wartet zwischen ausführungen 0 Takte, TaskA 20 Takte\n    Beobachten sie den Output. TaskB soll die Ziffern 0 bis 9 ausgeben, TaskA einen Liedtext.\n    Beobachtung:\n        Nur die die Daten von TaskB werden ausgegeben.\n    Begründung:\n        Die Zeit, in der TaskB nicht läuft reicht nicht aus, damit TaskA laufen kann. Da TaskA eine geringere Priorität hat als TaskB, wird A vollständig verträngt\n\n### Fall 1.2: Zeitintervalle von B sind nicht zu klein\n    Setze xFrequency von TaskB 2\n    Das heißt: TaskB wird wartet zwischen ausführungen 2 Takte\n    Beobachten sie wieder den Output.\n    Beobachtung:\n        Der Liedtext wird ausgegeben, aber von den Ziffern aus TaskB unterbrochen.\n    Begründung:\n        A hat genug Zeit, um zu schreiben. Falls B (während A aktiv ist) bereit wird, so wird A von B unterbrochen. B greift unkontrolliert auf die gemeinsame Resource Serial.print() zu und es kommt zur Kollision (Race Condition).\n        \n        "
+      },
+      "studentConfig": {
+        "content": ""
+      },
+      "teacherConfig": {
+        "content": ""
+      },
+      "stationConfig": {
+        "content": ""
+      },
+      "showInCustom": "station",
+      "width": "full",
+      "height": "tall"
+    },
+    {
+      "url": "https://edrys-labs.github.io/module-editor/index.html",
+      "config": {
+        "runCommand": "execute",
+        "language": "cpp",
+        "theme": "vs-light",
+        "editorText": "#include <Arduino.h>\n#include <Arduino_FreeRTOS.h>\n#include <avr/delay.h>\n\n#define BAUD_PRESCALE (((F_CPU / (BAUDRATE * 16UL))) - 1)\t\n\nvoid TaskA( void *pvParameters );\nvoid TaskB( void *pvParameters );\nvoid usart_init( unsigned long BAUDRATE);\nvoid usart_putstring_direct(const char* str);\n\n\nvoid setup() {\n\n  usart_init(9600);\n  \n  xTaskCreate(\n    TaskA\n    ,  \"A\"  \n    ,  128  \n    ,  NULL\n    ,  1  \n    ,  NULL );\n\n  xTaskCreate(\n    TaskB\n    ,  \"B\"\n    ,  128 \n    ,  NULL\n    ,  2 \n    ,  NULL );\n\n}\n\nvoid loop()\n{\n}\n\n// low priority task\nvoid TaskA( void *pvParameters __attribute__((unused)) )  \n{\n  const TickType_t xFrequency = 20; \n\n    // text: 297 chars\n  const char* text = \"\\n\\nSome things in life are bad\\n\"\n      \"They can really make you mad\\n\"\n      \"Other things just make you swear and curse\\n\"\n      \"When you're chewing on life's gristle\\n\"\n      \"Don't grumble, give a whistle\\n\"\n      \"And this'll help things turn out for the best\\n\"\n      \"And\\n\"\n      \"Always look on the bright side of life\\n\"\n      \"Always look on the light side of life\\n\\n\";\n\n  for (;;) \n  {\n    usart_putstring_direct(text);\n    vTaskDelay( xFrequency );\n  }\n}\n\n// high priority task\nvoid TaskB( void *pvParameters __attribute__((unused)) )  \n{\n  const TickType_t xFrequency = 1; \n\n  for (;;)\n  { \n    usart_putstring_direct(\" 123456789 \");\n\n    vTaskDelay( xFrequency );\n  }\n}\n\nvoid usart_init(unsigned long BAUDRATE)\t\t\t\t\n{ \n\tUCSR0B |= (1 << RXEN0) | (1 << TXEN0);\n\tUCSR0C |= (1 << UCSZ00) | (1 << UCSZ01);\t    \n\tUBRR0L = BAUD_PRESCALE;\t\t\t\t\t\t\t\n\tUBRR0H = (BAUD_PRESCALE >> 8);\t\t\t\t\t\n\n}\n\nvoid usart_putstring_direct(const char* str){\n    uint16_t strlen = 0;\n    while(str[strlen] != '\\0'){\n        strlen++;\n    }\n    for(uint16_t i; i< strlen; i++ ){\n      vTaskSuspendAll();\n      if(str[i] == '\\n'){\n        loop_until_bit_is_set(UCSR0A, UDRE0);\n        UDR0 = '\\r';\n      }\n      loop_until_bit_is_set(UCSR0A, UDRE0);\n      UDR0 = str[i];\n      xTaskResumeAll();\n    }\n\n}\n",
+        "synchronize": false
+      },
+      "studentConfig": "",
+      "teacherConfig": "",
+      "stationConfig": "",
+      "showInCustom": "station",
+      "width": "full",
+      "height": "tall"
+    },
+    {
+      "url": "https://edrys-labs.github.io/module-markdown-it/index.html",
+      "config": {
+        "content": "## Fall 2.1: gleiche Priorität\n    ThasA und TaskB haben die gleiche Priorität. Standartmäßig wendet FreeRTOS ein Round-Robin Verfahren.\n    Beobachtung:\n        A und B wechseln sich jeden Tick gegenseitig ab (Round Robin), sie unterbrechen sich also ständig gegenseitig, es kommt zur Kollision"
+      },
+      "studentConfig": {
+        "content": ""
+      },
+      "teacherConfig": {
+        "content": ""
+      },
+      "stationConfig": {
+        "content": ""
+      },
+      "showInCustom": "station",
+      "width": "full",
+      "height": "tall"
+    },
+    {
+      "url": "https://edrys-labs.github.io/module-editor/index.html",
+      "config": {
+        "runCommand": "execute",
+        "language": "cpp",
+        "theme": "vs-light",
+        "editorText": "#include <Arduino.h>\n#include <Arduino_FreeRTOS.h>\n\n#define BAUD_PRESCALE (((F_CPU / (BAUDRATE * 16UL))) - 1)\t\n\nvoid TaskA( void *pvParameters );\nvoid TaskB( void *pvParameters );\nvoid usart_init( unsigned long BAUDRATE);\nvoid usart_putstring_direct(const char* str);\n\n\nvoid setup() {\n\n  usart_init(9600);\n  \n  xTaskCreate(\n    TaskA\n    ,  \"A\"  \n    ,  128  \n    ,  NULL\n    ,  1  \n    ,  NULL );\n\n  xTaskCreate(\n    TaskB\n    ,  \"B\"\n    ,  128 \n    ,  NULL\n    ,  1 \n    ,  NULL );\n\n}\n\nvoid loop()\n{\n}\n\nvoid TaskA( void *pvParameters __attribute__((unused)) )  \n{\n  const TickType_t xFrequency = 10 ; \n\n  const char* text = \"A B C D E F G H I J K L M N O P Q R S T U V W X Y Z\\n\";\n\n  for (;;) \n  {\n    usart_putstring_direct(text);\n    vTaskDelay( xFrequency );\n  }\n}\n\nvoid TaskB( void *pvParameters __attribute__((unused)) )  \n{\n  const TickType_t xFrequency = 10; \n\n  for (;;)\n  { \n    usart_putstring_direct(\"a_b_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_r_s_t_u_v_w_x_y_z\\n\");\n\n    vTaskDelay( xFrequency );\n  }\n}\n\nvoid usart_init(unsigned long BAUDRATE)\t\t\t\t\n{ \n\tUCSR0B |= (1 << RXEN0) | (1 << TXEN0);\n\tUCSR0C |= (1 << UCSZ00) | (1 << UCSZ01);\t    \n\tUBRR0L = BAUD_PRESCALE;\t\t\t\t\t\t\t\n\tUBRR0H = (BAUD_PRESCALE >> 8);\t\t\t\t\t\n}\n\nvoid usart_putstring_direct(const char* str){\n    uint16_t strlen = 0;\n    while(str[strlen] != '\\0'){\n        strlen++;\n    }\n    for(uint16_t i; i< strlen; i++ ){\n      vTaskSuspendAll();\n      if(str[i] == '\\n'){\n        loop_until_bit_is_set(UCSR0A, UDRE0);\n        UDR0 = '\\r';\n      }\n      loop_until_bit_is_set(UCSR0A, UDRE0);\n      UDR0 = str[i];\n      xTaskResumeAll();\n    }\n\n}\n",
+        "synchronize": false
+      },
+      "studentConfig": "",
+      "teacherConfig": "",
+      "stationConfig": "",
+      "showInCustom": "station",
+      "width": "full",
+      "height": "tall"
+    },
+    {
+      "url": "https://edrys-labs.github.io/module-markdown-it/index.html",
+      "config": {
+        "content": "## Fall 3: Mutex\n- vor dem Schreiben reserviert A die Schnittstelle, B wartet bis Mutex freigegeben ist\n\n- Ergebnis:\n    → Keine Kollision, strings sind klar getrennt, Thread-Sicherheit durch Synchronisation.\n"
+      },
+      "studentConfig": {
+        "content": ""
+      },
+      "teacherConfig": {
+        "content": ""
+      },
+      "stationConfig": {
+        "content": ""
+      },
+      "showInCustom": "station",
+      "width": "full",
+      "height": "tall"
+    },
+    {
+      "url": "https://edrys-labs.github.io/module-editor/index.html",
+      "config": {
+        "runCommand": "execute",
+        "language": "cpp",
+        "theme": "vs-light",
+        "editorText": "#include <Arduino.h>\n#include <Arduino_FreeRTOS.h>\n#include <semphr.h>  \n\nSemaphoreHandle_t xSerialSemaphore;\n\n#define BAUD_PRESCALE (((F_CPU / (BAUDRATE * 16UL))) - 1)\t\n\nvoid TaskA( void *pvParameters );\nvoid TaskB( void *pvParameters );\nvoid usart_init( unsigned long BAUDRATE);\nvoid usart_putstring_direct(const char* str);\n\n\nvoid setup() {\n\n  usart_init(9600);\n\n  if ( xSerialSemaphore == NULL )  \n    {\n    xSerialSemaphore = xSemaphoreCreateMutex();  \n    if ( ( xSerialSemaphore ) != NULL )\n        xSemaphoreGive( ( xSerialSemaphore ) );  \n    }\n  \n  xTaskCreate(\n    TaskA\n    ,  \"A\"  \n    ,  128  \n    ,  NULL\n    ,  1  \n    ,  NULL );\n\n  xTaskCreate(\n    TaskB\n    ,  \"B\"\n    ,  128 \n    ,  NULL\n    ,  2 \n    ,  NULL );\n\n}\n\nvoid loop()\n{\n}\n\n// low priority task\nvoid TaskA( void *pvParameters __attribute__((unused)) )  \n{\n  const TickType_t xFrequency = 50; // 10\n\n  const char* text = \"\\n\\nSome things in life are bad\\n\"\n      \"They can really make you mad\\n\"\n      \"Other things just make you swear and curse\\n\"\n      \"When you're chewing on life's gristle\\n\"\n      \"Don't grumble, give a whistle\\n\"\n      \"And this'll help things turn out for the best\\n\"\n      \"And\\n\"\n      \"Always look on the bright side of life\\n\"\n      \"Always look on the light side of life\\n\\n\";\n\n  for (;;) \n  {\n    // If the semaphore is not available, wait 3 ticks of the Scheduler to see if it becomes free.\n    if ( xSemaphoreTake( xSerialSemaphore, ( TickType_t ) 3 ) == pdTRUE )\n    {\n      usart_putstring_direct(text);\n      xSemaphoreGive( xSerialSemaphore );\n    }\n    \n    vTaskDelay( xFrequency );\n  }\n}\n\n// high priority task\nvoid TaskB( void *pvParameters __attribute__((unused)) )  \n{\n  const TickType_t xFrequency = 2; \n\n  for (;;)\n  { \n    // If the semaphore is not available, wait 3 ticks of the Scheduler to see if it becomes free.\n    if ( xSemaphoreTake( xSerialSemaphore, ( TickType_t ) 3 ) == pdTRUE )\n    {\n      usart_putstring_direct(\" 123456789 \");\n      xSemaphoreGive( xSerialSemaphore );\n    }\n    \n    vTaskDelay( xFrequency );\n  }\n}\n\nvoid usart_init(unsigned long BAUDRATE)\t\t\t\t\n{ \n\tUCSR0B |= (1 << RXEN0) | (1 << TXEN0);\n\tUCSR0C |= (1 << UCSZ00) | (1 << UCSZ01);\t    \n\tUBRR0L = BAUD_PRESCALE;\t\t\t\t\t\t\t\n\tUBRR0H = (BAUD_PRESCALE >> 8);\t\t\t\t\t\n\n}\n\nvoid usart_putstring_direct(const char* str){\n    uint16_t strlen = 0;\n    while(str[strlen] != '\\0'){\n        strlen++;\n    }\n    for(uint16_t i; i< strlen; i++ ){\n      vTaskSuspendAll();\n      if(str[i] == '\\n'){\n        loop_until_bit_is_set(UCSR0A, UDRE0);\n        UDR0 = '\\r';\n      }\n      loop_until_bit_is_set(UCSR0A, UDRE0);\n      UDR0 = str[i];\n      xTaskResumeAll();\n    }\n\n}\n",
+        "synchronize": false
+      },
+      "studentConfig": "",
+      "teacherConfig": "",
+      "stationConfig": "",
+      "showInCustom": "station",
+      "width": "full",
+      "height": "tall"
+    }
+  ]
+}
